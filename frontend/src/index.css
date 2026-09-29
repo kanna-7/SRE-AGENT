@@ -1,0 +1,285 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-main:       #f8f9fa;
+  --bg-card:       #ffffff;
+  --bg-dark:       #0a0a0a;
+  --text-dark:     #0a0a0a;
+  --text-muted:    #52525b;
+  --border-light:  #e4e4e7;
+  --border-dark:   #27272a;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  min-height: 100vh;
+  color: #0a0a0a;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f8f9fa;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+/* ─── Typography & Font Weight System ────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.font-display {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.font-heading {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.font-subheading {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.font-body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+code, pre, .mono { 
+  font-family: 'JetBrains Mono', monospace; 
+  letter-spacing: -0.01em;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f4f4f5; }
+::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
+
+/* ─── Pill Badges (from design reference) ────────────────────────────── */
+.pill-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  background-color: #ffffff;
+  color: #18181b;
+  border: 1px solid #e4e4e7;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pill-tag:hover {
+  border-color: #a1a1aa;
+  transform: translateY(-1px);
+}
+
+.pill-tag-dark {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  transition: all 0.25s ease;
+}
+.pill-tag-dark:hover {
+  background-color: rgba(255, 255, 255, 0.18);
+}
+
+/* ─── Light Cards & Dark Callout Cards ───────────────────────────────── */
+.cw-card {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 24px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.04), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slideUpFade 0.4s ease-out;
+}
+
+.cw-card:hover {
+  box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.03);
+  transform: translateY(-3px);
+}
+
+.cw-card-dark {
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 28px;
+  color: #ffffff;
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.3);
+  background-image: radial-gradient(circle at 100% 0%, rgba(255, 255, 255, 0.06) 0%, transparent 60%);
+  transition: all 0.3s ease;
+  animation: slideUpFade 0.5s ease-out;
+}
+
+/* ─── Process Tilted Cards (like reference image) ────────────────────── */
+.process-card {
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  animation: slideUpFade 0.5s ease-out;
+}
+
+.process-card:hover {
+  transform: translateY(-8px) scale(1.02) rotate(0deg) !important;
+  box-shadow: 0 24px 48px -6px rgba(0, 0, 0, 0.12);
+  border-color: #71717a;
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────────── */
+.btn-black {
+  background-color: #0a0a0a;
+  color: #ffffff;
+  font-weight: 700;
+  border-radius: 9999px;
+  padding: 12px 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+.btn-black:hover {
+  background-color: #27272a;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+.btn-black:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.btn-outline {
+  background-color: #ffffff;
+  color: #0a0a0a;
+  font-weight: 700;
+  border-radius: 9999px;
+  padding: 12px 28px;
+  border: 1px solid #e4e4e7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+.btn-outline:hover {
+  background-color: #f4f4f5;
+  border-color: #a1a1aa;
+  transform: translateY(-2px) scale(1.02);
+}
+.btn-outline:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* ─── Severity Badges ────────────────────────────────────────────────── */
+.sev-1 { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+.sev-2 { background: #ffedd5; color: #ea580c; border: 1px solid #fdba74; }
+.sev-3 { background: #fef9c3; color: #ca8a04; border: 1px solid #fde047; }
+.sev-4 { background: #f4f4f5; color: #52525b; border: 1px solid #e4e4e7; }
+
+/* ─── Status Badges ──────────────────────────────────────────────────── */
+.st-open        { color: #52525b; background: #f4f4f5; border: 1px solid #e4e4e7; }
+.st-diagnosing  { color: #0284c7; background: #e0f2fe; border: 1px solid #7dd3fc; }
+.st-remediating { color: #d97706; background: #fef3c7; border: 1px solid #fde68a; }
+.st-resolved    { color: #15803d; background: #dcfce7; border: 1px solid #86efac; }
+
+/* ─── Animations & Keyframes ─────────────────────────────────────────── */
+@keyframes floatGentle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes liveBlink {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.25; transform: scale(0.85); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); }
+  50% { box-shadow: 0 0 30px rgba(16, 185, 129, 0.5); }
+}
+
+.animate-float {
+  animation: floatGentle 5s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in {
+  animation: slideUpFade 0.3s ease-out forwards;
+}
+
+.live-dot {
+  animation: liveBlink 1.5s ease-in-out infinite;
+}
+
+.pulse-glow {
+  animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+/* ─── Modal ──────────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 10, 0.75);
+  backdrop-filter: blur(8px);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: slideUpFade 0.2s ease-out;
+}
+
+/* ─── Table Row ──────────────────────────────────────────────────────── */
+.inc-row {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  border-bottom: 1px solid #f4f4f5;
+}
+.inc-row:hover {
+  background: #fafafa;
+  transform: scale(1.002);
+}
+.inc-row:last-child { border-bottom: none; }

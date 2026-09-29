@@ -1,0 +1,638 @@
+# 🎯 Solo Build Plan — AI Incident Response & SRE Agent
+
+Complete solo execution guide. Everything in one place: order of operations, prompts, and time budget.
+
+---
+
+## ⏱️ Solo Timeline (Realistic)
+
+| Phase | Time | What You Do |
+|---|---|---|
+| **Setup** | 30 min | Antigravity scaffold + Supabase + Hindsight + OpenAI keys |
+| **Backend Core** | 3 hrs | Memory, tools, 3 agents, routes |
+| **Frontend** | 3 hrs | Dashboard, timeline, detail page, components |
+| **Integration** | 1 hr | Wire chaos button → full pipeline → live updates |
+| **Polish** | 1 hr | Styling, edge cases, demo reliability |
+| **Content** | 1.5 hrs | Article + LinkedIn + video (using submission guide prompts) |
+| **Total** | **~10 hrs** | Solo, achievable in a hackathon weekend |
+
+**Golden rule for solo:** Build the **chaos button + timeline** first. That's 80% of your demo. Everything else is polish.
+
+---
+
+## 🔑 STEP 1 — Get Your Keys (Before Antigravity)
+
+Do this in a browser first. You'll paste them in later.
+
+1. **Supabase** → [supabase.com](https://supabase.com) → New project → copy `Project URL`, `anon key`, `service_role key`
+2. **OpenAI** → [platform.openai.com](https://platform.openai.com) → API keys → create one
+3. **Hindsight** → [hindsight.vectorize.io](https://hindsight.vectorize.io/) → sign up → get API key (check [GitHub](https://github.com/vectorize-io/hindsight) for setup if needed)
+
+Keep all 5 keys in a notepad. You'll need them in Step 8.
+
+---
+
+## 📋 THE PROMPTS (Run in Antigravity, in order)
+
+---
+
+### 🟦 PROMPT 1 — Scaffold Project
+
+```
+Create a solo full-stack project called "ai-sre-agent".
+
+ROOT STRUCTURE:
+ai-sre-agent/
+├── frontend/     (React 18 + Vite + TailwindCSS + react-router-dom)
+├── backend/      (Node.js + Express + ES modules)
+└── README.md
+
+BACKEND structure:
+backend/
+├── package.json (type: module, scripts: { dev: "node --watch src/server.js" })
+├── .env.example
+├── supabase/
+│   └── schema.sql
+└── src/
+    ├── server.js
+    ├── routes/
+    │   ├── incidents.js
+    │   └── chaos.js
+    ├── agents/
+    │   ├── triage.js
+    │   ├── diagnose.js
+    │   └── remediate.js
+    ├── memory/
+    │   └── hindsight.js
+    └── tools/
+        ├── getLogs.js
+        ├── getDeploys.js
+        └── getMetrics.js
+
+BACKEND dependencies: express, cors, dotenv, @supabase/supabase-js, axios, openai
+
+FRONTEND structure:
+frontend/
+├── package.json
+├── vite.config.js
+├── tailwind.config.js
+├── postcss.config.js
+├── .env.example
+├── index.html
+└── src/
+    ├── main.jsx
+    ├── App.jsx
+    ├── index.css
+    ├── lib/
+    │   ├── supabase.js
+    │   └── api.js
+    ├── pages/
+    │   ├── Dashboard.jsx
+    │   └── IncidentDetail.jsx
+    └── components/
+        ├── ChaosButton.jsx
+        ├── IncidentTimeline.jsx
+        ├── RootCauseCard.jsx
+        ├── FixConfidence.jsx
+        └── PostmortemView.jsx
+
+FRONTEND dependencies: react, react-dom, react-router-dom, @supabase/supabase-js, react-markdown, tailwindcss, autoprefixer, postcss
+
+Create every folder and empty placeholder file. Do not implement logic yet.
+```
+
+---
+
+### 🟦 PROMPT 2 — Supabase Schema
+
+```
+Create backend/supabase/schema.sql
+
+Write this SQL exactly:
+
+CREATE TABLE incidents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  service TEXT NOT NULL,
+  severity TEXT CHECK (severity IN ('SEV-1','SEV-2','SEV-3','SEV-4')),
+  status TEXT DEFAULT 'open' CHECK (status IN ('open','diagnosing','remediating','resolved')),
+  symptoms JSONB,
+  root_cause TEXT,
+  confidence_score FLOAT DEFAULT 0,
+  recommended_fix TEXT,
+  blast_radius TEXT,
+  mttr_seconds INT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ
+);
+
+CREATE TABLE fixes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  incident_id UUID REFERENCES incidents(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  success BOOLEAN,
+  side_effects TEXT,
+  applied_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE timeline_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  incident_id UUID REFERENCES incidents(id) ON DELETE CASCADE,
+  event_type TEXT CHECK (event_type IN ('alert','deploy','log','metric','ai_diagnosis','human_action','resolution')),
+  description TEXT,
+  raw_data JSONB,
+  timestamp TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_incidents_service ON incidents(service);
+CREATE INDEX idx_incidents_created ON incidents(created_at DESC);
+CREATE INDEX idx_timeline_incident ON timeline_events(incident_id);
+
+ALTER TABLE incidents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fixes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "public_all_incidents" ON incidents FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "public_all_fixes" ON fixes FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "public_all_timeline" ON timeline_events FOR ALL USING (true) WITH CHECK (true);
+
+-- Enable realtime
+ALTER PUBLICATION supabase_realtime ADD TABLE incidents;
+ALTER PUBLICATION supabase_realtime ADD TABLE timeline_events;
+```
+
+---
+
+### 🟦 PROMPT 3 — Hindsight Memory Client
+
+```
+Create backend/src/memory/hindsight.js
+
+Import axios. Use:
+- const API_URL = process.env.HINDSIGHT_API_URL || 'https://api.hindsight.vectorize.io'
+- const API_KEY = process.env.HINDSIGHT_API_KEY
+
+Create an axios instance with Authorization: Bearer ${API_KEY} and Content-Type: application/json.
+
+Export four async functions with try/catch (on error, log '[HINDSIGHT ERROR]' and return safe defaults):
+
+1. retainIncident(incident, fixOutcome)
+   - Build a natural-language memory string:
+     "Incident on ${service}: ${title}. Severity ${severity}. Symptoms: ${JSON.stringify(symptoms)}. Root cause: ${root_cause}. Fix applied: ${fixOutcome.action}. Success: ${fixOutcome.success}. Side effects: ${fixOutcome.side_effects || 'none'}. MTTR: ${mttr_seconds}s."
+   - POST /v1/retain with { bank_id: `sre-${service}`, content, context: 'incident_resolution', timestamp: new Date().toISOString(), metadata: { incident_id, service, success } }
+   - Return response.data
+
+2. recallSimilarIncidents(symptoms, service)
+   - query = `Incident with symptoms: ${JSON.stringify(symptoms)} on service ${service}`
+   - POST /v1/recall with { bank_id: `sre-${service}`, query, limit: 5 }
+   - Return response.data.memories || []
+
+3. reflectOnFixes(service)
+   - POST /v1/reflect with { bank_id: `sre-${service}`, query: 'What fixes have worked best for incidents on this service?' }
+   - Return response.data || {}
+
+4. storeConversation(incidentId, messages)
+   - POST /v1/retain with { bank_id: 'sre-conversations', content: JSON.stringify(messages), context: 'incident_conversation', metadata: { incident_id } }
+   - Return response.data
+
+On any failure, return [] for recall, {} for reflect/store, null for retain.
+```
+
+---
+
+### 🟦 PROMPT 4 — Mock Observability Tools
+
+```
+Create three files under backend/src/tools/.
+
+FILE: getDeploys.js
+Export async function getRecentDeploys(service, windowMinutes = 30)
+- Deterministic pseudo-random using service name as seed (simple string hash)
+- Return 3-5 recent deploys in the last windowMinutes
+- Each: { commit: 'a3f9c2b', author: 'eng@company.com', version: 'v2.3.1', deployed_at: ISO timestamp, changes_summary: 'Reduced DB pool size 50 → 10' }
+- Bias: at least one deploy should be 5-10 minutes ago (this is the smoking gun for the demo)
+- The changes_summary should hint at the root cause for db_pool_exhaustion scenario
+
+FILE: getLogs.js
+Export async function getLogs(service, symptoms, windowMinutes = 15)
+- Return 15-25 log lines with timestamps
+- Realistic patterns:
+  - "ERROR [${service}] HikariPool-1 - Connection is not available, request timed out after 30000ms"
+  - "WARN [${service}] DB pool utilization at 95%"
+  - "ERROR [${service}] CircuitBreaker OPEN for downstream call"
+  - "INFO [${service}] Request processed in 4200ms"
+- Include at least 3 ERROR lines that correlate with DB pool exhaustion
+
+FILE: getMetrics.js
+Export async function getMetrics(service, windowMinutes = 30)
+- Return { p50: 120, p99: 4200, error_rate: 12.4, throughput: 890, cpu: 78, memory: 82, db_pool_usage: 98 }
+- If a recent deploy exists (call getRecentDeploys), spike p99 and error_rate
+
+All functions async, deterministic per (service + current hour).
+```
+
+---
+
+### 🟦 PROMPT 5 — Triage Agent
+
+```
+Create backend/src/agents/triage.js
+
+Import OpenAI from 'openai'. Initialize with process.env.OPENAI_API_KEY.
+
+Export async function triageAlert(alert)
+- Input: { service, title, raw_alert }
+- Call openai.chat.completions.create with model: 'gpt-4o-mini', response_format: { type: 'json_object' }
+
+System prompt:
+"You are an expert SRE triaging a production alert. Classify severity: SEV-1 (full outage, all users), SEV-2 (major feature down, >10% users), SEV-3 (degraded, <10% users), SEV-4 (cosmetic). Return JSON with keys: severity, impact_summary, affected_users_percent, priority (1-5)."
+
+User prompt includes alert.service, alert.title, alert.raw_alert.
+
+Parse and return the JSON. If parsing fails, return safe defaults: { severity: 'SEV-3', impact_summary: 'Unknown', affected_users_percent: 0, priority: 3 }.
+```
+
+---
+
+### 🟦 PROMPT 6 — Diagnose Agent (Core Intelligence)
+
+```
+Create backend/src/agents/diagnose.js
+
+Import OpenAI, and from ../memory/hindsight.js import recallSimilarIncidents, reflectOnFixes.
+From ../tools import getRecentDeploys, getLogs, getMetrics.
+
+Export async function diagnoseIncident(incident)
+- Input: incident object with { id, service, symptoms, severity, title }
+
+Step 1 — Parallel fetch:
+const [deploys, logs, metrics, pastIncidents, fixInsights] = await Promise.all([
+  getRecentDeploys(incident.service),
+  getLogs(incident.service, incident.symptoms),
+  getMetrics(incident.service),
+  recallSimilarIncidents(incident.symptoms, incident.service),
+  reflectOnFixes(incident.service)
+]);
+
+Step 2 — Build memory context string:
+If pastIncidents.length > 0: "SIMILAR PAST INCIDENTS (Hindsight memory):\n" + each memory's content as a bullet
+Else: "No similar past incidents found."
+
+Step 3 — Call OpenAI gpt-4o with response_format json_object.
+
+System prompt:
+"You are a Senior SRE with deep memory of past incidents. Use FRESH SIGNALS for evidence and PAST INCIDENTS as learned experience. Return JSON with keys: root_cause (string, cite specific evidence), confidence_score (0-100 int), recommended_fix (string, a specific action/command), blast_radius (string, what will be affected + estimated recovery time), evidence (array of 3-5 strings), similar_past_incident_ids (array of referenced memory IDs)."
+
+User prompt includes:
+- Incident: service, severity, title, symptoms
+- Fresh signals: deploys, logs (first 10 lines), metrics
+- Memory: pastIncidents list + fixInsights
+
+Step 4 — If pastIncidents.length > 0, add +10 to confidence_score (cap at 95).
+
+Step 5 — Return parsed JSON.
+```
+
+---
+
+### 🟦 PROMPT 7 — Remediate Agent (Closes the Loop)
+
+```
+Create backend/src/agents/remediate.js
+
+Import supabase client. Create a supabase service-role client at top of file using process.env.SUPABASE_URL and process.env.SUPABASE_SERVICE_KEY.
+Import retainIncident from '../memory/hindsight.js'.
+
+Export async function proposeRemediation(incidentId, diagnosis):
+- Insert timeline_event: { incident_id, event_type: 'ai_diagnosis', description: `AI diagnosis: ${diagnosis.root_cause}`, raw_data: diagnosis }
+- Update incidents row: status='diagnosing', root_cause, confidence_score, recommended_fix, blast_radius
+- Return { requires_approval: true, action: diagnosis.recommended_fix, confidence: diagnosis.confidence_score }
+
+Export async function executeRemediation(incidentId, action, approvedBy):
+- Insert into fixes: { incident_id, action, applied_at: now }
+- Insert timeline_event: { incident_id, event_type: 'human_action', description: `${approvedBy} approved: ${action}` }
+- Update incidents: status='remediating'
+- await new Promise(r => setTimeout(r, 2000))
+- success = Math.random() < 0.9
+- Update fixes row: success, side_effects: success ? null : 'Temporary latency spike during restart'
+- Return { success, side_effects }
+
+Export async function verifyRecovery(incidentId):
+- await new Promise(r => setTimeout(r, 5000))
+- Fetch incident row
+- Compute mttr_seconds = (Date.now() - new Date(incident.created_at)) / 1000
+- Update incidents: status='resolved', resolved_at=NOW(), mttr_seconds
+- Insert timeline_event: { incident_id, event_type: 'resolution', description: `Recovered in ${Math.round(mttr_seconds)}s` }
+- Fetch fixes row (latest) for this incident
+- Call retainIncident(updatedIncident, { action: fix.action, success: fix.success, side_effects: fix.side_effects }) ← CRITICAL
+- Return { recovered: true, mttr_seconds }
+```
+
+---
+
+### 🟦 PROMPT 8 — Backend Routes
+
+```
+Create backend/src/routes/incidents.js
+
+Setup Express router. Create supabase service client at top.
+
+GET / — list all incidents ordered created_at DESC, limit 50
+GET /:id — fetch incident + timeline_events + fixes for that id, return { incident, timeline, fixes }
+POST /:id/approve — body { action, approvedBy } → call executeRemediation then verifyRecovery, return both results
+GET /:id/similar — fetch incident, call recallSimilarIncidents(symptoms, service), return { memories }
+GET /:id/postmortem — 
+  1. Fetch incident, timeline_events, fixes
+  2. Call recallSimilarIncidents for related
+  3. Call gpt-4o with system prompt:
+     "You write blameless postmortems. Given incident data, timeline, fixes, and related past incidents, generate structured markdown with sections: ## Summary, ## Impact, ## Timeline, ## Root Cause, ## Resolution, ## What Went Well, ## Action Items (3-5 concrete), ## Related Incidents. Cite evidence. No blame."
+  4. Return { markdown, incident, related: memories }
+
+Create backend/src/routes/chaos.js
+
+POST /trigger — body { service, scenario }
+- Generate title based on scenario (e.g., 'DB pool exhaustion on payment-api')
+- Generate symptoms JSON based on scenario:
+  - db_pool_exhaustion: { error_rate_spike: true, p99_latency: '>4s', log_pattern: 'HikariPool' }
+  - memory_leak: { memory_growth: true, oom_risk: true }
+  - bad_deploy: { recent_deploy: true, error_rate_spike: true }
+  - network_partition: { timeouts: true, downstream_failures: true }
+- Insert incident row with status='open', severity='SEV-2' (will be updated by triage)
+- Insert timeline_event 'alert': `${service} alert fired: ${scenario}`
+- Immediately (fire and forget, do not await for response):
+  1. call triageAlert → update incident severity
+  2. call diagnoseIncident → call proposeRemediation
+- Return { incidentId }
+
+Create backend/src/server.js
+
+Import express, cors, dotenv/config, and the two routers.
+app.use(cors({ origin: 'http://localhost:5173' }))
+app.use(express.json())
+app.use('/api/incidents', incidentsRouter)
+app.use('/api/chaos', chaosRouter)
+app.get('/health', (req, res) => res.json({ ok: true }))
+app.listen(PORT || 3001)
+```
+
+---
+
+### 🟦 PROMPT 9 — Frontend Supabase & API
+
+```
+Create frontend/src/lib/supabase.js
+- import { createClient } from '@supabase/supabase-js'
+- export const supabase = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY)
+
+Create frontend/src/lib/api.js
+- const API = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+- Export async functions using fetch:
+  - listIncidents() → GET /api/incidents
+  - getIncident(id) → GET /api/incidents/${id}
+  - approveFix(id, action, approvedBy) → POST /api/incidents/${id}/approve
+  - getSimilarIncidents(id) → GET /api/incidents/${id}/similar
+  - getPostmortem(id) → GET /api/incidents/${id}/postmortem
+  - triggerChaos(service, scenario) → POST /api/chaos/trigger
+- Throw on non-2xx responses
+```
+
+---
+
+### 🟦 PROMPT 10 — Dashboard Page
+
+```
+Create frontend/src/pages/Dashboard.jsx
+
+- On mount: call listIncidents() → store in state
+- Subscribe to Supabase realtime on 'incidents' table (INSERT + UPDATE) → refetch or merge
+- Stats bar: Total Incidents, Resolved count, Avg MTTR (from resolved), Fix Success Rate
+- Table columns: Severity badge, Service, Title, Status, Confidence, MTTR, Created At (relative)
+- Row click → navigate(`/incident/${id}`)
+- ChaosButton at top right
+- Dark theme, Tailwind
+
+Severity colors:
+SEV-1: bg-red-600
+SEV-2: bg-orange-500
+SEV-3: bg-yellow-500
+SEV-4: bg-slate-500
+
+Add a "🔴 LIVE" pulse indicator when realtime events come in.
+```
+
+---
+
+### 🟦 PROMPT 11 — Incident Detail Page
+
+```
+Create frontend/src/pages/IncidentDetail.jsx
+
+Two-column layout (grid-cols-3 on lg, stacked on mobile).
+
+LEFT (col-span-2):
+- Incident header: title, service, severity badge, status
+- RootCauseCard (props: incident.root_cause, incident.confidence_score, incident.evidence)
+- FixConfidence (props: incidentId, recommendedFix=incident.recommended_fix)
+- If status === 'diagnosing': big green "✅ Approve Fix" button → approveFix(id, recommended_fix, 'oncall@company.com') → show loading → on success show "Executing..."
+- If status === 'resolved': PostmortemView (props: incidentId)
+
+RIGHT (col-span-1):
+- IncidentTimeline (props: incidentId)
+
+BOTTOM (full width):
+- Section "🧠 Similar Past Incidents (Hindsight Memory)" → fetch getSimilarIncidents(id) → render each memory as a card with content preview
+
+Realtime: subscribe to incidents row (UPDATE) and timeline_events (INSERT filtered by incident_id). Update local state.
+
+On mount: call getIncident(id) → set incident, timeline, fixes.
+```
+
+---
+
+### 🟦 PROMPT 12 — Components
+
+```
+Create frontend/src/components/ChaosButton.jsx
+- Big red pulsing button "🚨 Trigger Incident"
+- Click → modal with two selects: service (payment-api, auth-service, orders-api) and scenario (db_pool_exhaustion, memory_leak, bad_deploy, network_partition)
+- On submit → triggerChaos() → navigate to /incident/${incidentId}
+- Show loading state during the call
+
+Create frontend/src/components/IncidentTimeline.jsx
+- Props: incidentId
+- Fetch timeline_events ASC on mount
+- Subscribe realtime INSERT filtered by incident_id
+- Render vertical timeline, icon per event_type:
+  alert 🚨, deploy 🚀, log 📝, metric 📊, ai_diagnosis 🤖, human_action 👤, resolution ✅
+- Timestamp left, description right
+- Auto-scroll to newest
+- Animate new events with fade-in
+
+Create frontend/src/components/RootCauseCard.jsx
+- Props: rootCause, confidence, evidence (array)
+- Card with heading "Root Cause"
+- Display rootCause text
+- Confidence progress bar (0-100), color: <50 red, 50-75 yellow, >75 green
+- Bullet list of evidence
+
+Create frontend/src/components/FixConfidence.jsx
+- Props: incidentId, recommendedFix
+- On mount: getSimilarIncidents(incidentId)
+- Show "Recommended: <fix>"
+- Show "Historical Success: X% (based on N similar incidents)" — compute from memories
+- Render memories as small cards with their content
+
+Create frontend/src/components/PostmortemView.jsx
+- Props: incidentId
+- Button "Generate Postmortem"
+- On click: getPostmortem(incidentId) → set markdown
+- Render with react-markdown
+- "Copy to clipboard" button using navigator.clipboard
+```
+
+---
+
+### 🟦 PROMPT 13 — App Router & Styling
+
+```
+Create frontend/src/App.jsx
+- BrowserRouter with routes: / → Dashboard, /incident/:id → IncidentDetail
+- Shared header with logo "AI SRE Agent" and a small tagline "Incidents with memory"
+
+Create frontend/src/main.jsx
+- React 18 createRoot, render <App />, import './index.css'
+
+Create frontend/src/index.css
+- @tailwind base; @tailwind components; @tailwind utilities;
+- body: bg-slate-950 text-slate-100, font-mono for code-ish feel
+
+Create frontend/tailwind.config.js and postcss.config.js with standard content globs: ['./index.html', './src/**/*.{js,jsx}']
+
+Create frontend/index.html with <div id="root"></div> and title "AI SRE Agent"
+```
+
+---
+
+### 🟦 PROMPT 14 — Env Files & README
+
+```
+Create backend/.env.example:
+SUPABASE_URL=
+SUPABASE_SERVICE_KEY=
+HINDSIGHT_API_KEY=
+HINDSIGHT_API_URL=https://api.hindsight.vectorize.io
+OPENAI_API_KEY=
+PORT=3001
+
+Create frontend/.env.example:
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_API_URL=http://localhost:3001
+
+Create README.md with:
+# AI SRE Agent
+An AI SRE agent that remembers every incident it has ever resolved using Hindsight persistent memory. Every new incident benefits from all past ones.
+
+## Stack
+React + Vite + TailwindCSS, Node.js + Express, Supabase (Postgres + Realtime), Hindsight (agent memory), OpenAI GPT-4o
+
+## Setup
+1. Create Supabase project → run backend/supabase/schema.sql in SQL editor
+2. Get Hindsight API key → https://github.com/vectorize-io/hindsight
+3. Get OpenAI API key
+4. cp backend/.env.example backend/.env and fill values
+5. cp frontend/.env.example frontend/.env and fill values
+6. cd backend && npm install && npm run dev
+7. cd frontend && npm install && npm run dev
+
+## Demo
+1. Open http://localhost:5173
+2. Click "🚨 Trigger Incident" → choose payment-api + db_pool_exhaustion
+3. Watch live timeline: alert → deploy → logs → AI diagnosis
+4. Click "✅ Approve Fix" → recovery verified → MTTR recorded
+5. Generate postmortem
+6. Trigger the same incident again → agent recalls the first from Hindsight → resolves instantly
+
+## Links
+- Hindsight: https://github.com/vectorize-io/hindsight
+- Hindsight docs: https://hindsight.vectorize.io/
+- Agent memory explained: https://vectorize.io/what-is-agent-memory
+```
+
+---
+
+## 🏃 STEP 8 — Wire Up & Run (Manual)
+
+After all prompts complete:
+
+**1. Fill env files:**
+```bash
+cp backend/.env.example backend/.env
+# paste SUPABASE_URL, SUPABASE_SERVICE_KEY, HINDSIGHT_API_KEY, OPENAI_API_KEY
+
+cp frontend/.env.example frontend/.env
+# paste VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+```
+
+**2. Run Supabase schema:**
+- Supabase dashboard → SQL Editor → paste `backend/supabase/schema.sql` → Run
+
+**3. Start backend:**
+```bash
+cd backend && npm install && npm run dev
+```
+
+**4. Start frontend:**
+```bash
+cd frontend && npm install && npm run dev
+```
+
+**5. Open http://localhost:5173 → click 🚨 Trigger Incident**
+
+---
+
+## 🎬 Solo Demo Flow (For Video)
+
+| Time | Action | What It Proves |
+|---|---|---|
+| 0:00 | Intro — "I'm X, this is an SRE agent with memory" | Hook |
+| 0:20 | Open dashboard, show it's clean | Baseline |
+| 0:30 | Click ChaosButton → payment-api + db_pool_exhaustion | Trigger |
+| 0:40 | Watch timeline populate live | Live AI working |
+| 1:30 | See root cause + confidence + evidence | Diagnosis quality |
+| 2:00 | Check "Similar Past Incidents" — empty on first run | Memory hook |
+| 2:20 | Approve fix → recovery → MTTR recorded | Closed loop |
+| 2:50 | Generate postmortem | Bonus feature |
+| 3:10 | **Trigger SAME incident again** | The money shot |
+| 3:20 | Agent instantly recalls first incident, confidence +10, similar fix proposed | **Memory proof** |
+| 4:00 | "First incident: 4 min. Second: 8 sec. Same code. Only difference: Hindsight memory." | Takeaway |
+
+---
+
+## 🎯 Solo Rules to Ship On Time
+
+1. **Build in this order:** Chaos button → Timeline → Diagnose agent → Hindsight recall → Postmortem. Skip anything else if time runs out.
+2. **Mock everything external.** No real Prometheus, no real K8s. Judges won't check.
+3. **Rehearse the demo 3× before recording.** Live demos fail.
+4. **Record a backup video** the night before in case live breaks.
+5. **One-sentence pitch:** *"Every AI agent is a goldfish. I gave mine memory — and it became the Senior SRE you wish was on call."*
+
+---
+
+## ✅ Submission Checklist
+
+- [ ] Backend running, Hindsight retain/recall working
+- [ ] Frontend dashboard + timeline + detail page working
+- [ ] Chaos button triggers full pipeline end-to-end
+- [ ] Two incidents of same type → second one resolves faster (memory proof)
+- [ ] Postmortem generator working
+- [ ] GitHub repo public
+- [ ] Article published (Medium/Dev.to/Hashnode) — no "hackathon" mention
+- [ ] LinkedIn post live + first comment with [Hindsight GitHub link](https://github.com/vectorize-io/hindsight)
+- [ ] YouTube video (2-5 min) with thumbnail
+- [ ] Submitted to r/llmdevs, r/aiagents, r/aimemory
+- [ ] All 3 Hindsight links present in article
+
+---
+
+That's the complete solo path. Want me to now write the **article draft**, **LinkedIn post**, or **video script** — using this exact project? Say which one and I'll ship it ready to paste.
